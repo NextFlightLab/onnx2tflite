@@ -1,12 +1,17 @@
+# IDEs
+.idea
+
+# builds
+*.egg-info
+build/*
+dist/*
+
+# cache
+__pycache__
+.pytest_cache
+
+# vs code
+.vscode
+
 *.onnx
 *.tflite
-__pycache__/
-.ipynb_checkpoints/
-test.py
-gen_model.py
-models/
-unit_test/
-onnx2tflite.egg-info/
-build/
-dist/
-main.py

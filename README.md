@@ -4,7 +4,7 @@ If you have some good ideas, welcome to discuss or give project PRs.
 
 ## Install
 ```cmd
-git clone https://github.com/MPolaris/onnx2tflite.git
+git clone https://github.com/NextFlightLab/onnx2tflite.git
 cd onnx2tflite
 python setup.py install
 ```

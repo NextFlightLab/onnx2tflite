@@ -277,6 +277,9 @@ class TFGemm():
     def __call__(self, inputs):
         if not self.channel_last:
             inputs = dimension_utils.tensor_NCD_to_NDC_format(inputs)
+        # Gemm expects a 2D matrix; flatten any extra leading dims into the feature axis
+        if len(inputs.shape) > 2:
+            inputs = tf.reshape(inputs, [tf.shape(inputs)[0], -1])
         return self.dense(inputs)
 
 @OPERATOR.register_operator("Identity")
