@@ -87,6 +87,8 @@ class TFGRU:
             time_major=True,
             reset_after=self.linear_before_reset,
             use_bias=use_bias,
+            # Unroll to avoid generating tf.while_loop in the converted graph.
+            unroll=True,
             weights=weights_list,
         )
 
