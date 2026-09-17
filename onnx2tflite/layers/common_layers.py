@@ -42,6 +42,47 @@ class TFInstanceNormalization():
         var = tf.math.reduce_variance(inputs, axis= axes, keepdims=True)
         return self.scale*(inputs - mean)/tf.sqrt(var + self.epsilon) + self.bias
 
+@OPERATOR.register_operator("LayerNormalization")
+class TFLayerNormalization():
+    def __init__(self, tensor_grap, node_weights, node_inputs, node_attribute, node_outputs, layout_dict, *args, **kwargs):
+        super().__init__()
+        self.axis = int(node_attribute.get("axis", -1))
+        self.epsilon = float(node_attribute.get("epsilon", 1e-5))
+        self.stash_type = int(node_attribute.get("stash_type", 1))
+        self.output_count = len(node_outputs)
+        self.scale = tensor_grap[node_inputs[1]] if node_inputs[1] in tensor_grap else node_weights[node_inputs[1]]
+        self.bias = 0.0
+        if len(node_inputs) > 2 and node_inputs[2]:
+            self.bias = tensor_grap[node_inputs[2]] if node_inputs[2] in tensor_grap else node_weights[node_inputs[2]]
+
+        self.channel_last = layout_dict[node_inputs[0]] == Layout.Channel_Last
+        output_layout = Layout.Channel_First if self.channel_last else layout_dict[node_inputs[0]]
+        for output in node_outputs:
+            layout_dict[output] = output_layout
+
+    def __call__(self, inputs):
+        if self.channel_last:
+            inputs = dimension_utils.tensor_NDC_to_NCD_format(inputs)
+
+        rank = len(inputs.shape)
+        axis = self.axis % rank
+        reduction_axes = tuple(range(axis, rank))
+        compute_dtype = tf.float32 if self.stash_type == 1 else inputs.dtype
+        values = tf.cast(inputs, compute_dtype)
+        mean = tf.reduce_mean(values, axis=reduction_axes, keepdims=True)
+        variance = tf.reduce_mean(tf.square(values - mean), axis=reduction_axes, keepdims=True)
+        inv_std_dev = tf.math.rsqrt(variance + tf.cast(self.epsilon, compute_dtype))
+        normalized = (values - mean) * inv_std_dev
+        output = normalized * tf.cast(self.scale, compute_dtype) + tf.cast(self.bias, compute_dtype)
+        output = tf.cast(output, inputs.dtype)
+
+        if self.output_count == 1:
+            return output
+        results = [output, mean]
+        if self.output_count > 2:
+            results.append(inv_std_dev)
+        return results
+
 @OPERATOR.register_operator("Pad")
 class TFPad():
     def __init__(self, tensor_grap, node_weights, node_inputs, node_attribute, node_outputs, layout_dict, *args, **kwargs):

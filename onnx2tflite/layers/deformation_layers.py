@@ -283,17 +283,36 @@ class TFUnsqueeze():
 class TFSqueeze():
     def __init__(self, tensor_grap, node_weights, node_inputs, node_attribute, node_outputs, layout_dict, *args, **kwargs)->None:
         super().__init__()
-        self.axis = node_attribute['axes'] if 'axes' in node_attribute else node_weights[node_inputs[1]]
-        if not isinstance(self.axis, int):
-            self.axis = int(self.axis[0])
+        axes = node_attribute.get('axes')
+        if axes is None and len(node_inputs) > 1:
+            axes = node_weights[node_inputs[1]]
+
         input_shape = tensor_grap[node_inputs[0]].shape
-        if len(input_shape) <= 3:
+        input_rank = len(input_shape)
+        if axes is None:
+            logical_shape = input_shape
+            if layout_dict[node_inputs[0]] == Layout.Channel_Last:
+                logical_shape = dimension_utils.shape_NDC_to_NCD_format(input_shape)
+            logical_axes = [index for index, size in enumerate(logical_shape) if size == 1]
+            self.axis = None
+        else:
+            axes = axes.tolist() if hasattr(axes, 'tolist') else axes
+            axes = axes if isinstance(axes, (list, tuple)) else [axes]
+            logical_axes = [int(axis) % input_rank for axis in axes]
+            self.axis = logical_axes
+
+        input_layout = layout_dict[node_inputs[0]]
+        output_rank = input_rank - len(logical_axes)
+        if output_rank <= 2 or (input_layout in (Layout.Channel_First, Layout.Channel_Last) and 1 in logical_axes):
             layout_dict[node_outputs[0]] = Layout.Channel_None
-        if len(input_shape) > 2 and layout_dict[node_inputs[0]] == Layout.Channel_Last:
-            self.axis = dimension_utils.channel_to_last_dimension(self.axis)
+        else:
+            layout_dict[node_outputs[0]] = input_layout
+
+        if self.axis is not None and input_layout == Layout.Channel_Last:
+            self.axis = [dimension_utils.channel_to_last_dimension(axis) for axis in self.axis]
 
     def __call__(self, inputs):
-        return tf.squeeze(inputs, self.axis)
+        return tf.squeeze(inputs, axis=self.axis)
 
 @OPERATOR.register_operator("DepthToSpace")
 class TFDepthToSpace():
