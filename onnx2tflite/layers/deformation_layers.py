@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import tensorflow as tf
 
 from onnx2tflite.utils.definitions import Layout
@@ -65,6 +66,11 @@ class TFGather():
         super().__init__()
         self.axis = node_attribute.get('axis', 0)
         self.indices = tensor_grap[node_inputs[1]] if node_inputs[1] in tensor_grap else node_weights[node_inputs[1]]
+        if isinstance(self.indices, np.ndarray) and self.indices.dtype == np.int64:
+            int32_limits = np.iinfo(np.int32)
+            if self.indices.size and (self.indices.min() < int32_limits.min or self.indices.max() > int32_limits.max):
+                raise OverflowError("Gather indices cannot be represented as int32")
+            self.indices = self.indices.astype(np.int32)
         if layout_dict[node_inputs[0]] == Layout.Channel_Last:
             self.axis = dimension_utils.channel_to_last_dimension(self.axis)
 

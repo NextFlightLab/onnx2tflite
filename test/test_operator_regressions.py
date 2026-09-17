@@ -12,6 +12,41 @@ from onnx2tflite import onnx_converter
 
 
 class OperatorRegressionTest(unittest.TestCase):
+    def test_gather_constant_indices_are_int32(self):
+        x_info = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 2, 4])
+        output_info = helper.make_tensor_value_info("output", TensorProto.FLOAT, [1, 4])
+        indices = numpy_helper.from_array(np.array(1, dtype=np.int64), "indices")
+        gather = helper.make_node("Gather", ["x", "indices"], ["output"], axis=1)
+        graph = helper.make_graph([gather], "gather_regression", [x_info], [output_info], [indices])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 18)])
+        model.ir_version = 8
+        onnx.checker.check_model(model)
+
+        x = np.arange(8, dtype=np.float32).reshape(1, 2, 4)
+
+        with tempfile.TemporaryDirectory() as model_root:
+            onnx_path = os.path.join(model_root, "gather.onnx")
+            onnx.save(model, onnx_path)
+            result = onnx_converter(
+                onnx_model_path=onnx_path,
+                need_simplify=False,
+                output_path=model_root,
+                target_formats=["tflite"],
+            )
+
+            interpreter = tf.lite.Interpreter(model_path=result["tflite"])
+            interpreter.allocate_tensors()
+            gather_op = next(op for op in interpreter._get_ops_details() if op["op_name"] == "GATHER")
+            positions_index = gather_op["inputs"][1]
+            tensor_details = {detail["index"]: detail for detail in interpreter.get_tensor_details()}
+            self.assertEqual(tensor_details[positions_index]["dtype"], np.int32)
+
+            interpreter.set_tensor(interpreter.get_input_details()[0]["index"], x)
+            interpreter.invoke()
+            actual = interpreter.get_tensor(interpreter.get_output_details()[0]["index"])
+
+        np.testing.assert_array_equal(actual, x[:, 1, :])
+
     def test_multi_axis_squeeze_and_layer_normalization(self):
         x_info = helper.make_tensor_value_info("x", TensorProto.FLOAT, [1, 1, 1, 4])
         obs_info = helper.make_tensor_value_info("obs", TensorProto.FLOAT, [1, 2])
